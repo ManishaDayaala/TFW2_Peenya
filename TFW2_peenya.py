@@ -42,7 +42,7 @@ model_folder_path = os.path.join(MAINFOLDER, "Models")
 uploaded_files = []  # List to keep track of uploaded files
 
 # Streamlit UI
-st.title("Breakdown Predictor")
+st.title("Breakdown Predictor-TFW 2(Peenya)")
 st.markdown("Upload your files, and they will be preprocessed accordingly.")
 
 
@@ -247,83 +247,7 @@ def set_random_seed(seed=42):
     random.seed(seed)
     tf.random.set_seed(seed)
 
-# Define the training function
-def train_ensemble_model(training_file_path, model_folder_path):
-    def load_data(file_path):
-        df = pd.read_excel(file_path)
-        X = df.iloc[:, 3:-1].values  # Features (assuming columns 3 to second last)
-        y = df['Code'].values  # Target column
-        return X, y
 
-    def preprocess_data(X, y):
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        # Save the scaler
-        joblib.dump(scaler, os.path.join(model_folder_path, "scaler.pkl"))
-
-        # Split into training and validation sets
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.01, random_state=42, shuffle=True)
-
-        # Check class distribution
-        unique_classes, class_counts = np.unique(y_train, return_counts=True)
-        min_class_samples = min(class_counts)  # Minimum class sample count
-
-        # Adjust `n_neighbors` to avoid errors in SMOTE
-        n_neighbors = min(5, min_class_samples - 1) if min_class_samples > 1 else 1
-
-        try:
-            smote = SMOTE(random_state=42, k_neighbors=n_neighbors)
-            X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
-        except ValueError as e:
-            st.warning(f"SMOTE failed: {e}. Using original training data instead.")
-            X_resampled, y_resampled = X_train, y_train  # Fall back to original data if SMOTE fails
-        
-        return X_resampled, X_test, y_resampled, y_test
-
-
-    def build_nn_model():
-        model = Sequential()
-        model.add(Dense(128, activation='relu', input_shape=(X_resampled.shape[1],)))
-        model.add(Dropout(0.2))
-        model.add(Dense(64, activation='relu'))
-        model.add(Dropout(0.2))
-        model.add(Dense(32, activation='relu'))
-        model.add(Dense(2, activation='softmax'))  # 4 output units for the 4 classes
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])  # Use sparse_categorical_crossentropy
-        return model
-
-    # Set random seed
-    set_random_seed()
-
-    # Load and preprocess data
-    X, y = load_data(training_file_path)
-    X_resampled, X_test, y_resampled, y_test = preprocess_data(X, y)
-
-    # Class weights for Keras model
-    class_weights = {0: 0.0, 1: 500 }
-
-    # Build Keras model
-    nn_model = KerasClassifier(model=build_nn_model, epochs=100, batch_size=32, verbose=0, class_weight=class_weights)
-
-    # Calculate sample weights for XGBoost
-    sample_weights = np.array([class_weights[int(label)] for label in y_resampled])
-
-    # XGBoost model
-    xgb_model = xgb.XGBClassifier(objective='multi:softmax', num_class=2, eval_metric='mlogloss', sample_weight=sample_weights, random_state=42)
-
-    # Ensemble model
-    ensemble_model = VotingClassifier(estimators=[
-        ('xgb', xgb_model),
-        ('nn', nn_model)
-    ], voting='hard')
-
-    # Train the ensemble model
-    ensemble_model.fit(X_resampled, y_resampled)
-
-    # Save the trained model
-    joblib.dump(ensemble_model, os.path.join(model_folder_path, "ensemble.pkl"))
-    st.success("Ensemble model training completed and saved!")
 
 # Define the prediction function
 def predict_ensemble(test_file_path, model_folder_path):
@@ -364,12 +288,12 @@ def predict_ensemble(test_file_path, model_folder_path):
         return f"Error: {e}"
 
 # Streamlit app UI
-st.title("Breakdown Code Classification")
+st.title("Predict Breakdown")
 
 
 #...CHNAGED................................................................................................................................................
 
-if st.button("Check BD Classification"):
+if st.button("Predict Breakdown"):
     with st.spinner("Checking breakdown..."):
         #train_ensemble_model(training_file_path, model_folder_path)  # Train the model
         result = predict_ensemble(test_file_path, model_folder_path)  # Predict breakdown
@@ -413,46 +337,6 @@ import numpy as np
 def set_random_seed(seed=42):
     np.random.seed(seed)
 
-# Define the training function
-def train_model(training_file_path):
-    def load_data(file_path):
-        df = pd.read_excel(file_path, sheet_name="Time")
-        X = df.iloc[:, 1:-2].values
-        y = df.iloc[:, -2].values
-        return X, y
-
-    def preprocess_data(X, y):
-        mask = (y <= 15)# Time to breakdown less than 72 hours
-        X_filtered = X[mask]
-        y_filtered = y[mask]
-        
-        # Use a fixed random_state to ensure reproducibility
-        X_train, X_val, y_train, y_val = train_test_split(X_filtered, y_filtered, test_size=0.01, random_state=42)
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_val_scaled = scaler.transform(X_val)
-        joblib.dump(scaler, os.path.join(model_folder_path, 'scaler_TFW2_time.pkl'))
-        return X_train_scaled, X_val_scaled, y_train, y_val
-
-    def build_model(input_shape):
-        model = Sequential()
-        model.add(Dense(128, input_dim=input_shape, activation='relu'))
-        model.add(Dense(64, activation='relu'))
-        model.add(Dense(32, activation='relu'))
-        model.add(Dense(1, activation='linear'))
-        model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
-        return model
-
-    # Set random seed for reproducibility
-    set_random_seed()
-
-    X, y = load_data(training_file_path)
-    X_train, X_val, y_train, y_val = preprocess_data(X, y)
-    model = build_model(X_train.shape[1])
-
-    #early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
-    model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, batch_size=32)
-    model.save(os.path.join(model_folder_path, 'time_TFW2.h5'))
 
 # Define the prediction function
 def predict_time(test_file_path):
