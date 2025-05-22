@@ -575,7 +575,7 @@ def predict_lstm_autoencoder(test_file_path, model_folder_path):
                 sensor_dict[sensor_id]["params"].add(feature_name)
 
     # Filter only sensors with anomaly count > 30
-    filtered_dict = {sensor: info for sensor, info in sensor_dict.items() if info["count"] > 30}
+    filtered_dict = {sensor: info for sensor, info in sensor_dict.items() if info["count"] > 5}
 
     if not filtered_dict:
         st.session_state["check_bd_clicked"] = False
